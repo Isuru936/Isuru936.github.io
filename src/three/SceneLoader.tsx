@@ -2,7 +2,8 @@
 
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
-import { useEffect, useState } from 'react';
+
+import { useWebGLSupport } from './hooks/useWebGLSupport';
 
 /**
  * WebGL needs a DOM and a GPU context, so the scene is client-only. The poster
@@ -19,14 +20,7 @@ type SceneLoaderProps = {
 };
 
 export function SceneLoader({ posterSrc, posterAlt, className }: SceneLoaderProps) {
-  const [canRenderWebGL, setCanRenderWebGL] = useState(false);
-
-  useEffect(() => {
-    // Probe rather than assume: a WebGL-less browser must still get a usable page.
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('webgl2') ?? canvas.getContext('webgl');
-    setCanRenderWebGL(Boolean(context));
-  }, []);
+  const supportsWebGL = useWebGLSupport();
 
   return (
     <div className={`relative isolate overflow-hidden ${className ?? ''}`}>
@@ -39,8 +33,8 @@ export function SceneLoader({ posterSrc, posterAlt, className }: SceneLoaderProp
         className="object-cover"
       />
 
-      {canRenderWebGL ? (
-        <div className="absolute inset-0 motion-safe:animate-[fade-in_600ms_ease-out_forwards]">
+      {supportsWebGL ? (
+        <div className="absolute inset-0 motion-safe:animate-scene-in">
           <Scene />
         </div>
       ) : null}
