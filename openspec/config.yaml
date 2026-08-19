@@ -1,0 +1,53 @@
+schema: spec-driven
+
+context: |
+  PROJECT
+  Personal portfolio site for Isuru Bandara. A 3D/WebGL-led showcase of work,
+  originally designed in Claude Design and being rebuilt as a real application.
+
+  TECH STACK
+  - Next.js 16 (App Router) + React 19 + TypeScript, `src/` dir, `@/*` import alias
+  - Tailwind CSS v4 (PostCSS plugin, no tailwind.config.js by default)
+  - React Three Fiber (@react-three/fiber) + @react-three/drei wrapping three.js
+  - Turso (libSQL) accessed via Drizzle ORM and @libsql/client
+  - MDX for project/case-study content, stored in-repo under content/
+  - pnpm as the package manager
+  - Hosted on Vercel (Hobby). GitHub Actions is CI only — Vercel's git
+    integration performs deploys on push to main.
+
+  ARCHITECTURAL RULES (treat as invariants)
+  - `src/three/` is the ONLY place allowed to import `three` or R3F packages.
+    Keeps WebGL out of every server bundle and out of non-3D routes.
+  - `src/db/queries/` is the ONLY place allowed to import drizzle. Everything
+    else calls typed query functions.
+  - Never mount <Canvas> in app/layout.tsx — it would load three.js on every
+    route and leak GPU contexts across navigations. Mount per-page.
+  - All WebGL entry points use dynamic(() => import(...), { ssr: false }).
+  - Project content lives in MDX and is statically generated. The database is
+    only for data that genuinely needs writes (view counts, contact form).
+  - Stay on the Node.js runtime for route handlers and server actions.
+  - Migrations are never automatic. They run via a workflow_dispatch-only
+    GitHub Actions job, after a `turso db dump`.
+  - Any public write endpoint requires rate limiting plus a honeypot or
+    Cloudflare Turnstile before it ships.
+  - Secrets (TURSO_AUTH_TOKEN) live in .env.local, Vercel env vars, and GitHub
+    secrets. Never committed. Env is validated with zod at boot.
+
+  KNOWN OPEN ITEMS
+  - The Claude Design output has not been inspected yet, so it is unknown
+    whether the existing 3D scene is raw three.js or already R3F. `src/three/`
+    is scaffolded as a placeholder until that is resolved.
+  - The Turso database currently lives in aws-ap-south-1 (Mumbai) while Vercel
+    functions default to iad1 (N. Virginia), which costs ~200ms per query.
+    Moving the DB to aws-us-east-1 is a deliberate, deferred follow-up.
+
+rules:
+  proposal:
+    - Keep proposals under 500 words
+    - Always include a "Non-goals" section
+  design:
+    - Call out any decision that contradicts the architectural rules above
+    - Prefer referencing the invariants over restating them
+  tasks:
+    - Break tasks into chunks of max 2 hours
+    - Order tasks so the app stays runnable after each one
