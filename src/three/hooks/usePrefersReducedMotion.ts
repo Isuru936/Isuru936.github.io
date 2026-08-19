@@ -1,25 +1,24 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useSyncExternalStore } from 'react';
 
 const QUERY = '(prefers-reduced-motion: reduce)';
 
-/**
- * Starts pessimistic (true) so the first paint never animates for someone who
- * asked it not to.
- */
+function subscribe(onStoreChange: () => void): () => void {
+  const media = window.matchMedia(QUERY);
+  media.addEventListener('change', onStoreChange);
+  return () => media.removeEventListener('change', onStoreChange);
+}
+
+function getSnapshot(): boolean {
+  return window.matchMedia(QUERY).matches;
+}
+
+/** Pessimistic on the server: never animate before the preference is known. */
+function getServerSnapshot(): boolean {
+  return true;
+}
+
 export function usePrefersReducedMotion(): boolean {
-  const [prefersReduced, setPrefersReduced] = useState(true);
-
-  useEffect(() => {
-    const media = window.matchMedia(QUERY);
-    setPrefersReduced(media.matches);
-
-    const onChange = (event: MediaQueryListEvent) => setPrefersReduced(event.matches);
-    media.addEventListener('change', onChange);
-
-    return () => media.removeEventListener('change', onChange);
-  }, []);
-
-  return prefersReduced;
+  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }

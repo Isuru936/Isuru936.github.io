@@ -1,0 +1,59 @@
+name: Migrate database
+
+# Manual only, deliberately. An automatic migration that fails mid-deploy on a
+# free tier with no backups is unrecoverable.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "migrate" to confirm you have reviewed the pending SQL'
+        required: true
+        type: string
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Check confirmation
+        if: inputs.confirm != 'migrate'
+        run: |
+          echo "::error::Confirmation input was not 'migrate'. Aborting."
+          exit 1
+
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Install Turso CLI
+        run: |
+          curl -sSfL https://get.tur.so/install.sh | bash
+          echo "$HOME/.turso" >> "$GITHUB_PATH"
+
+      - name: Back up before migrating
+        env:
+          TURSO_API_TOKEN: ${{ secrets.TURSO_API_TOKEN }}
+        run: |
+          mkdir -p backup
+          turso db dump "${{ vars.TURSO_DB_NAME }}" > "backup/pre-migration.sql"
+          wc -l backup/pre-migration.sql
+
+      - name: Upload backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pre-migration-dump
+          path: backup/pre-migration.sql
+          retention-days: 30
+
+      - name: Apply migrations
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+        run: pnpm db:migrate
