@@ -136,7 +136,6 @@ const EXPERIENCE = [
   { when: '2026 — now', role: 'Software Engineer', org: 'Ascentic · Sri Jayawardenepura Kotte' },
   { when: '2025 — 2026', role: 'Associate Software Engineer', org: 'Ascentic · Colombo' },
   { when: '2024 — 2025', role: 'Software Engineer Intern', org: 'Ascentic · Colombo' },
-  { when: '2022 — 2023', role: 'Batch Representative', org: 'SLIIT City UNI · Kandy' },
 ];
 
 const STACK = [
