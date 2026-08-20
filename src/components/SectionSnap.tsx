@@ -3,22 +3,22 @@
 import { useEffect } from 'react';
 
 const COUNT = 6;
-const DURATION = 900;
+const DURATION = 550;
 /**
  * Silence that ends a gesture.
  *
- * A trackpad flick emits a long, decaying stream of `wheel` events. Two things
- * make a fixed-duration lock unworkable: the stream can outlast any lock, and —
- * because the WebGL render loop saturates the main thread — delivery is jittery,
- * so individual gaps between events vary wildly (measured: 166ms median with
- * outliers past 300ms). Comparing one gap against a threshold therefore splits a
- * single flick into several "gestures".
+ * A trackpad flick emits a long, decaying stream of `wheel` events. A
+ * fixed-duration lock cannot work — the stream outlasts any lock, and delivery
+ * is jittery, so comparing one inter-event gap against a threshold splits a
+ * single flick into several "gestures" and advances several sections.
  *
  * Instead the gesture stays open and is re-armed by a timer that EVERY event
- * resets, so it ends only on sustained silence. The window is generous because
- * jitter, not inertia, sets the floor here.
+ * resets, so it ends only on sustained silence. This window is the main
+ * sensitivity control: raise it if one flick ever advances two sections, lower
+ * it to allow quicker successive flicks. Measured wheel-gap outliers on a real
+ * GPU reach ~350ms, so going much below ~250 risks the double-advance bug.
  */
-const GESTURE_QUIET = 500;
+const GESTURE_QUIET = 260;
 /** Minimum touch travel before a swipe counts as a gesture. */
 const SWIPE_PX = 40;
 
