@@ -3,6 +3,7 @@
 import type { CSSProperties } from 'react';
 
 import { PanelFocus } from '@/components/PanelFocus';
+import { SectionSnap } from '@/components/SectionSnap';
 import { sceneFonts } from '@/lib/fonts';
 import { DeskWorldCanvas } from '@/three/DeskWorldCanvas';
 
@@ -171,6 +172,7 @@ export default function Home() {
     <>
       <DeskWorldCanvas accent={ACCENT} motion="full" fonts={sceneFonts} />
       <PanelFocus />
+      <SectionSnap />
 
       {/* Readability scrim over the scene — heavier at the edges than the middle. */}
       <div
