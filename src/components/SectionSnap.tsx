@@ -21,13 +21,18 @@ const DURATION = 620;
  * a second, and then scrolling feels dead. Creation timestamps are unaffected by
  * that delivery backlog.
  *
+ * Raised from 160 to 200 after a scripted flick showed a genuine 257ms
+ * *creation* gap mid-stream under load. That was the harness's own timer
+ * stuttering rather than hardware, but 200 still sits well under the ~250ms
+ * floor for a deliberate second flick, so the margin is free.
+ *
  * The margin is against a momentum stream *thinning out* rather than stopping:
  * macOS emits momentum wheel events at display refresh rate right up until they
  * end, so real gaps inside one flick stay near 16ms. A deliberate second flick
  * is never less than ~250ms behind the first, so this sits comfortably between
  * the two and does not read as a gate.
  */
-const GESTURE_GAP = 160;
+const GESTURE_GAP = 200;
 
 /**
  * Floor on a wheel delta that is allowed to declare a direction. Trackpads emit
