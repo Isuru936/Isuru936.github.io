@@ -2,37 +2,67 @@
 
 import { useEffect } from 'react';
 
+/** Camera stations in `deskScene` — one per page section. */
 const COUNT = 6;
-const DURATION = 550;
+
+/** How long one section-to-section move takes. */
+const DURATION = 620;
+
 /**
- * Silence that ends a gesture.
+ * Gap in *event time* that separates one gesture from the next.
  *
- * A trackpad flick emits a long, decaying stream of `wheel` events. A
- * fixed-duration lock cannot work — the stream outlasts any lock, and delivery
- * is jittery, so comparing one inter-event gap against a threshold splits a
- * single flick into several "gestures" and advances several sections.
+ * A flick — however hard — is one unbroken stream of `wheel` events, and one
+ * stream moves one section. What makes a window this short safe is that the gap
+ * is measured with `event.timeStamp`, the moment the browser *created* the
+ * event, rather than a clock read when the handler happens to run. This page
+ * renders a shadowed three.js scene every frame, so events are delivered late
+ * and in bunches: dispatch-time gaps read as several hundred milliseconds in the
+ * middle of a single flick, which forces a naive implementation to set this over
+ * a second, and then scrolling feels dead. Creation timestamps are unaffected by
+ * that delivery backlog.
  *
- * Instead the gesture stays open and is re-armed by a timer that EVERY event
- * resets, so it ends only on sustained silence. This window is the main
- * sensitivity control: raise it if one flick ever advances two sections, lower
- * it to allow quicker successive flicks. Measured wheel-gap outliers on a real
- * GPU reach ~350ms, so going much below ~250 risks the double-advance bug.
+ * The margin is against a momentum stream *thinning out* rather than stopping:
+ * macOS emits momentum wheel events at display refresh rate right up until they
+ * end, so real gaps inside one flick stay near 16ms. A deliberate second flick
+ * is never less than ~250ms behind the first, so this sits comfortably between
+ * the two and does not read as a gate.
  */
-const GESTURE_QUIET = 260;
-/** Minimum touch travel before a swipe counts as a gesture. */
-const SWIPE_PX = 40;
+const GESTURE_GAP = 160;
+
+/**
+ * Floor on a wheel delta that is allowed to declare a direction. Trackpads emit
+ * a few opposite-sign scraps at the edges of a flick; those are noise, not a
+ * reversal.
+ */
+const DIR_DELTA = 4;
+
+/**
+ * Hard ceiling on the step rate, whatever the timestamps claim. Nothing below
+ * should need it — it bounds the worst case if an engine ever reports dispatch
+ * time as `timeStamp`, so the failure is "slightly stiff" and never "the flick
+ * ran the page end to end".
+ */
+const MIN_STEP_GAP = 240;
+
+/** Finger travel that turns a drag into a swipe. */
+const SWIPE_PX = 44;
+
+/** Settling time before a scroll we did not cause is pulled back on station. */
+const SETTLE = 150;
+
+/** Height change that counts as a real resize and not a mobile URL bar. */
+const RESIZE_SLOP = 140;
 
 const easeInOutCubic = (t: number) =>
   t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 
 /**
- * Locks scrolling to one section per gesture.
+ * One section per gesture, in either direction.
  *
- * Rather than change what drives the camera, this snaps the scroll *position* to
- * the offsets where `deskScene` already places the camera exactly on a station —
- * `(i + 0.5) / COUNT` of the scrollable range, with the ends pinned to 0 and
- * max. The scene keeps reading scrollY continuously, so its lerp still plays the
- * transition; only where scrolling comes to rest has changed.
+ * Scroll position stays the transport — `deskScene` and `PanelFocus` both read
+ * it every frame — but it only ever comes to rest on one of `COUNT` offsets.
+ * Every input is reduced to a discrete ±1 and the page is tweened there; the
+ * scene keeps reading scrollY continuously, so its lerp still plays the move.
  */
 export function SectionSnap() {
   useEffect(() => {
@@ -40,14 +70,31 @@ export function SectionSnap() {
 
     let index = 0;
     let animating = false;
-    let gestureOpen = false;
-    let quietTimer: ReturnType<typeof setTimeout> | undefined;
-    let touchHandled = false;
     let raf = 0;
+
+    // Gesture state. `lastWheelAt` is in event time, `lastStepAt` in wall time.
+    let lastWheelAt = -Infinity;
+    let lastStepAt = -Infinity;
+    let lastDir = 0;
+
+    let settleTimer: ReturnType<typeof setTimeout> | undefined;
+    let resizeTimer: ReturnType<typeof setTimeout> | undefined;
+    let viewW = window.innerWidth;
+    let viewH = window.innerHeight;
 
     const maxScroll = () =>
       Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
 
+    /**
+     * Where section `i` comes to rest.
+     *
+     * `deskScene` turns scroll progress into a camera station with
+     * `f = clamp(progress * COUNT - 0.5)`, so station `i` sits at
+     * `(i + 0.5) / COUNT` of the range. The two ends are pinned to 0 and max
+     * instead: that clamp already parks the camera exactly on the first and last
+     * station there, and only those offsets leave the first and last sticky
+     * panel centred in the viewport.
+     */
     const targetFor = (i: number) => {
       const max = maxScroll();
       if (i <= 0) return 0;
@@ -68,117 +115,138 @@ export function SectionSnap() {
       return best;
     };
 
-    index = nearestIndex();
-
-    const goTo = (next: number) => {
+    /** Absolute move. `instant` skips the tween without skipping the maths. */
+    const goTo = (next: number, instant = false) => {
       const clamped = Math.max(0, Math.min(COUNT - 1, next));
-      const from = window.scrollY;
-      const to = targetFor(clamped);
       index = clamped;
 
-      if (Math.abs(to - from) < 1) return;
+      const from = window.scrollY;
+      const to = targetFor(clamped);
 
-      if (reduceMotion.matches) {
+      cancelAnimationFrame(raf);
+
+      if (instant || reduceMotion.matches || Math.abs(to - from) < 1) {
+        animating = false;
         window.scrollTo({ top: to, behavior: 'instant' });
         return;
       }
 
       animating = true;
       const start = performance.now();
-      cancelAnimationFrame(raf);
 
-      const step = () => {
+      const frame = () => {
         const p = Math.min(1, (performance.now() - start) / DURATION);
-        // 'instant' so the tween is not fighting `scroll-behavior: smooth`.
-        window.scrollTo({ top: from + (to - from) * easeInOutCubic(p), behavior: 'instant' });
-        if (p < 1) {
-          raf = requestAnimationFrame(step);
-        } else {
-          animating = false;
-        }
+        // 'instant' every frame: this tween IS the easing, and a second
+        // smoothing pass from `scroll-behavior` would fight it. The last frame
+        // writes `to` exactly rather than the eased value, so we land on the
+        // station to the pixel and nothing schedules a corrective re-snap.
+        window.scrollTo({
+          top: p < 1 ? from + (to - from) * easeInOutCubic(p) : to,
+          behavior: 'instant',
+        });
+        if (p < 1) raf = requestAnimationFrame(frame);
+        else animating = false;
       };
-      raf = requestAnimationFrame(step);
+      raf = requestAnimationFrame(frame);
     };
 
     /**
-     * A panel that overflows its viewport height must scroll its own content
-     * first; only once it is at the edge does the gesture move the page.
-     */
-    const panelWantsGesture = (target: EventTarget | null, dir: number) => {
-      let el = target instanceof Element ? target : null;
-      while (el) {
-        if (el.hasAttribute('data-panel')) {
-          const slack = el.scrollHeight - el.clientHeight;
-          if (slack <= 1) return false;
-          if (dir > 0) return el.scrollTop < slack - 1;
-          return el.scrollTop > 1;
-        }
-        el = el.parentElement;
-      }
-      return false;
-    };
-
-    /**
-     * Relative move. The index is re-derived from the real scroll position
-     * first, so scrolling by any other means — dragging the scrollbar, browser
-     * find, focus scrolling, a programmatic jump — cannot leave us pointing at a
-     * stale section and then jumping somewhere non-adjacent.
+     * Relative move. At rest the index is re-derived from the real position, so
+     * a scrollbar drag or a find-in-page jump cannot leave us stepping from a
+     * stale section. Mid-tween the logical index wins instead: the page is
+     * between two stations there, and "nearest" is a coin flip.
      */
     const step = (dir: number) => {
       if (!animating) index = nearestIndex();
       goTo(index + dir);
     };
 
-    /** Any wheel activity keeps the current gesture open. */
-    const keepGestureOpen = () => {
-      clearTimeout(quietTimer);
-      quietTimer = setTimeout(() => {
-        gestureOpen = false;
-      }, GESTURE_QUIET);
+    /** Nearest ancestor that scrolls its own content. */
+    const panelAt = (target: EventTarget | null) => {
+      let el = target instanceof Element ? target : null;
+      while (el) {
+        if (el instanceof HTMLElement && el.hasAttribute('data-panel')) return el;
+        el = el.parentElement;
+      }
+      return null;
+    };
+
+    /**
+     * A panel taller than its box scrolls its own content first; only once it is
+     * at the edge does the gesture move the page.
+     */
+    const panelTakes = (el: HTMLElement | null, dir: number) => {
+      if (!el) return false;
+      const slack = el.scrollHeight - el.clientHeight;
+      if (slack <= 1) return false;
+      return dir > 0 ? el.scrollTop < slack - 1 : el.scrollTop > 1;
     };
 
     const onWheel = (e: WheelEvent) => {
-      const dir = Math.sign(e.deltaY);
+      const delta = e.deltaY;
+      const dir = Math.sign(delta);
       if (!dir) return;
 
-      // Held even when a panel consumes the event, so reaching a panel's edge
-      // mid-flick does not let the remainder of that flick fling the page.
-      keepGestureOpen();
+      const loud = Math.abs(delta) >= DIR_DELTA;
+      // Momentum decays, it never reverses, so a push the other way is always a
+      // deliberate new gesture and must not wait out the gap.
+      const fresh = e.timeStamp - lastWheelAt > GESTURE_GAP || (loud && dir !== lastDir);
 
-      if (panelWantsGesture(e.target, dir)) return;
+      // Recorded even when a panel eats the event, so reaching a panel's edge
+      // mid-flick does not let the remainder of that flick fling the page.
+      lastWheelAt = e.timeStamp;
+      if (loud) lastDir = dir;
+
+      if (panelTakes(panelAt(e.target), dir)) return;
       e.preventDefault();
 
-      if (gestureOpen) return;
-      gestureOpen = true;
+      if (!fresh) return;
+      const now = performance.now();
+      if (now - lastStepAt < MIN_STEP_GAP) return;
+      lastStepAt = now;
       step(dir);
     };
 
     let touchY = 0;
+    let touchDir = 0;
+    let touchPanel: HTMLElement | null = null;
+    let touchLive = false;
+    let swiped = false;
+
     const onTouchStart = (e: TouchEvent) => {
-      touchY = e.touches[0]?.clientY ?? 0;
+      // Pinch and other multi-touch belong to the browser.
+      touchLive = e.touches.length === 1;
+      if (!touchLive) return;
+      touchY = e.touches[0].clientY;
+      touchDir = 0;
+      touchPanel = panelAt(e.target);
       // One section per finger-down, however far the finger travels.
-      touchHandled = false;
+      swiped = false;
     };
 
     const onTouchMove = (e: TouchEvent) => {
-      const y = e.touches[0]?.clientY ?? 0;
-      const travel = touchY - y;
-      const dir = Math.sign(travel);
-      if (!dir || Math.abs(travel) < SWIPE_PX) return;
-      if (panelWantsGesture(e.target, dir)) return;
-      e.preventDefault();
-      if (touchHandled) return;
-      touchHandled = true;
-      touchY = y;
-      step(dir);
+      if (!touchLive) return;
+      const travel = touchY - (e.touches[0]?.clientY ?? touchY);
+      touchDir = Math.sign(travel) || touchDir;
+
+      // Only hand the gesture to the panel once the finger has declared a
+      // direction. With travel still at zero the finger has not asked anything
+      // to scroll yet, and guessing wrong here is what lets a native page pan
+      // start — after which preventDefault is ignored for the rest of the drag.
+      if (touchDir && panelTakes(touchPanel, touchDir)) return;
+      // Cancelled from the very first move so a native pan never starts. Doing
+      // it only once the swipe passes SWIPE_PX is too late: by then the browser
+      // owns the scroll and preventDefault is ignored.
+      if (e.cancelable) e.preventDefault();
+
+      if (swiped || Math.abs(travel) < SWIPE_PX) return;
+      swiped = true;
+      step(touchDir);
     };
 
-    const KEY_STEPS: Record<string, number> = {
-      ArrowDown: 1,
-      PageDown: 1,
-      ' ': 1,
-      ArrowUp: -1,
-      PageUp: -1,
+    const onTouchEnd = () => {
+      touchLive = false;
+      touchPanel = null;
     };
 
     const onKeyDown = (e: KeyboardEvent) => {
@@ -194,50 +262,107 @@ export function SectionSnap() {
       }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
 
-      const absolute = e.key === 'Home' ? 0 : e.key === 'End' ? COUNT - 1 : null;
-      const relative = e.key in KEY_STEPS ? KEY_STEPS[e.key] : null;
-      if (absolute === null && relative === null) return;
+      let relative = 0;
+      let absolute: number | null = null;
+      switch (e.key) {
+        case 'ArrowDown':
+        case 'PageDown':
+          relative = 1;
+          break;
+        case 'ArrowUp':
+        case 'PageUp':
+          relative = -1;
+          break;
+        case ' ':
+          relative = e.shiftKey ? -1 : 1;
+          break;
+        case 'Home':
+          absolute = 0;
+          break;
+        case 'End':
+          absolute = COUNT - 1;
+          break;
+        default:
+          return;
+      }
 
       e.preventDefault();
       // Auto-repeat from a held key would run the page end to end.
-      if (e.repeat || animating) return;
-
+      if (e.repeat) return;
       if (absolute !== null) goTo(absolute);
-      else step(relative!);
+      else step(relative);
     };
 
     /** Nav anchors must land on the same offsets, not the raw section top. */
     const onClick = (e: MouseEvent) => {
       if (e.defaultPrevented || e.button !== 0) return;
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
       const anchor = (e.target as Element | null)?.closest?.('a[href^="#s"]');
       if (!anchor) return;
-      const i = Number(anchor.getAttribute('href')?.slice(2));
+      const href = anchor.getAttribute('href') ?? '';
+      const i = Number(href.slice(2));
       if (!Number.isInteger(i) || i < 0 || i >= COUNT) return;
       e.preventDefault();
       goTo(i);
     };
 
-    /** Targets are ratios, so a resize only invalidates which one we are on. */
-    const onResize = () => {
-      if (!animating) index = nearestIndex();
+    /**
+     * Anything that moved the page without going through `goTo` — a middle-click
+     * autoscroll, find-in-page, focusing an off-screen link, a restored scroll
+     * position — is pulled back onto the nearest station once it stops.
+     */
+    const onScroll = () => {
+      if (animating) return;
+      clearTimeout(settleTimer);
+      settleTimer = setTimeout(() => {
+        if (animating) return;
+        const i = nearestIndex();
+        if (Math.abs(window.scrollY - targetFor(i)) > 2) goTo(i);
+      }, SETTLE);
     };
+
+    const onResize = () => {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      // A mobile URL bar sliding away fires resize continuously. Re-snapping on
+      // that fights the user's own scroll, so only a width change or a
+      // substantial height change counts.
+      if (w === viewW && Math.abs(h - viewH) < RESIZE_SLOP) return;
+      viewW = w;
+      viewH = h;
+      clearTimeout(resizeTimer);
+      // Targets are ratios of the scrollable range, so a resize moves them all;
+      // the section we are on is unchanged.
+      resizeTimer = setTimeout(() => goTo(index, true), SETTLE);
+    };
+
+    // Start on a station: a reload restores an arbitrary offset, and a `#s3`
+    // link lands on the section's raw top, which is between two of ours.
+    raf = requestAnimationFrame(() => goTo(nearestIndex(), true));
 
     window.addEventListener('wheel', onWheel, { passive: false });
     window.addEventListener('touchstart', onTouchStart, { passive: true });
     window.addEventListener('touchmove', onTouchMove, { passive: false });
+    window.addEventListener('touchend', onTouchEnd, { passive: true });
+    window.addEventListener('touchcancel', onTouchEnd, { passive: true });
     window.addEventListener('keydown', onKeyDown);
-    document.addEventListener('click', onClick);
+    window.addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('resize', onResize);
+    document.addEventListener('click', onClick);
 
     return () => {
       cancelAnimationFrame(raf);
-      clearTimeout(quietTimer);
+      clearTimeout(settleTimer);
+      clearTimeout(resizeTimer);
       window.removeEventListener('wheel', onWheel);
       window.removeEventListener('touchstart', onTouchStart);
       window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('touchend', onTouchEnd);
+      window.removeEventListener('touchcancel', onTouchEnd);
       window.removeEventListener('keydown', onKeyDown);
-      document.removeEventListener('click', onClick);
+      window.removeEventListener('scroll', onScroll);
       window.removeEventListener('resize', onResize);
+      document.removeEventListener('click', onClick);
     };
   }, []);
 
