@@ -112,7 +112,7 @@ await page.evaluate(() => {
   window.__wheelTimes = [];
   window.addEventListener(
     'wheel',
-    () => window.__wheelTimes.push(performance.now()),
+    (e) => window.__wheelTimes.push({ created: e.timeStamp, delivered: performance.now() }),
     { passive: true },
   );
 });
@@ -123,10 +123,15 @@ async function cadence(page) {
   return page.evaluate(() => {
     const t = window.__wheelTimes;
     window.__wheelTimes = [];
-    const gaps = t.map((v, i, a) => (i ? Math.round(v - a[i - 1]) : 0)).slice(1);
-    if (!gaps.length) return { events: t.length, median: 0, max: 0 };
-    const s = [...gaps].sort((a, b) => a - b);
-    return { events: t.length, median: s[Math.floor(s.length / 2)], max: s[s.length - 1] };
+    const of = (key) => {
+      const g = t.map((v, i, a) => (i ? Math.round(v[key] - a[i - 1][key]) : 0)).slice(1);
+      if (!g.length) return { median: 0, max: 0 };
+      const s = [...g].sort((a, b) => a - b);
+      return { median: s[Math.floor(s.length / 2)], max: s[s.length - 1] };
+    };
+    // `created` is what SectionSnap gates on; `delivered` is inflated by the
+    // render loop and is only here to show the difference.
+    return { events: t.length, created: of('created'), delivered: of('delivered') };
   });
 }
 
@@ -168,7 +173,7 @@ for (let step = 1; step <= 4; step++) {
   record(
     `flick ${step}: section ${before.index} -> ${after.index}`,
     moved === 1,
-    `advanced ${moved} (want 1); ${c.events} events, median gap ${c.median}ms, max ${c.max}ms`,
+    `advanced ${moved} (want 1); ${c.events} events, created gap med ${c.created.median}/max ${c.created.max}ms, delivered med ${c.delivered.median}/max ${c.delivered.max}ms`,
   );
 }
 
@@ -215,6 +220,26 @@ console.log('\ntwo deliberate flicks, separated by a pause:');
     `2 separated flicks: section ${before.index} -> ${after.index}`,
     moved === 2,
     `advanced ${moved} (want 2)`,
+  );
+}
+
+console.log('\nimmediate direction reversal (no pause):');
+{
+  await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
+  await sleep(700);
+  await flick(cdp, { direction: 1 });
+  await sleep(1600);
+  const before = await sectionIndex(page);
+  // Reverse straight away — momentum never runs backwards, so this must
+  // register without waiting out the quiet window.
+  await flick(cdp, { direction: -1 });
+  await sleep(1600);
+  const after = await sectionIndex(page);
+  const moved = after.index - before.index;
+  record(
+    `reverse: section ${before.index} -> ${after.index}`,
+    moved === -1,
+    `advanced ${moved} (want -1)`,
   );
 }
 
