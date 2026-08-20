@@ -1,40 +1,123 @@
-@import "tailwindcss";
+/*
+ * Base styles transcribed from the design's <helmet> block.
+ *
+ * Tailwind is deliberately NOT imported here. Its preflight applies
+ * `box-sizing: border-box` globally, but this design sets box-sizing only on
+ * specific elements — the header nav relies on content-box, where
+ * `max-width:1320px` plus `padding:0 30px` measures 1380px wide. Importing
+ * Tailwind would silently narrow it by 60px and shift every section.
+ */
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* No `scroll-behavior: smooth` here. SectionSnap tweens the page itself, and a
+   second smoothing pass fights that tween. Every same-page anchor is a `#s0`-`#s5`
+   link, which SectionSnap intercepts, so nothing is left relying on it.
+
+   The document is ~10 viewports tall but only ever rests on six offsets, so the
+   scrollbar thumb is a tenth of the track and dragging it lands between
+   stations. Hiding it removes the misleading control; the nav, the arrow keys
+   and Home/End all still move between sections. */
+html {
+  background: #07090c;
+  overscroll-behavior: none;
+  scrollbar-width: none;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html::-webkit-scrollbar {
+  display: none;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  margin: 0;
+  background: #07090c;
+  color: #e8ecef;
+  font-family: var(--font-sans), Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* Canvas fade-in over the poster. Referenced by src/three/SceneLoader.tsx. */
-@keyframes scene-in {
-  from {
-    opacity: 0;
+a {
+  color: #59d3cf;
+  text-decoration: none;
+}
+
+a:hover {
+  color: #8ce8e4;
+}
+
+::selection {
+  background: #59d3cf;
+  color: #07090c;
+}
+
+@keyframes hint {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.5;
   }
-  to {
+  50% {
+    transform: translateY(7px);
     opacity: 1;
   }
 }
 
-@theme {
-  --animate-scene-in: scene-in 600ms ease-out forwards;
+.hint-arrow {
+  display: block;
+  animation: hint 2s ease-in-out infinite;
+}
+
+/* The design expressed hover states as `style-hover` attributes, which the
+   Claude Design runtime compiled into :hover rules. These are those rules. */
+
+.nav-link {
+  color: #8a949c;
+}
+.nav-link:hover {
+  color: #59d3cf;
+}
+
+.btn-primary {
+  background: #59d3cf;
+  color: #07090c;
+}
+.btn-primary:hover {
+  background: #8ce8e4;
+}
+
+.btn-ghost {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #e8ecef;
+}
+.btn-ghost:hover {
+  border-color: #59d3cf;
+  color: #59d3cf;
+}
+
+.focus-card {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.focus-card:hover {
+  border-color: rgba(89, 211, 207, 0.45);
+}
+
+.contact-link {
+  color: #aeb7bd;
+}
+.contact-link:hover {
+  color: #59d3cf;
+}
+
+/* Panels are scrolled internally when they overflow; the design hid the bar. */
+.panel {
+  scrollbar-width: none;
+}
+.panel::-webkit-scrollbar {
+  display: none;
+}
+
+/* SectionSnap reads the same query and jumps instead of tweening. */
+@media (prefers-reduced-motion: reduce) {
+  .hint-arrow {
+    animation: none;
+    opacity: 1;
+  }
 }

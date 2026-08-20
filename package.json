@@ -9,12 +9,11 @@
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "drizzle-kit migrate",
+    "check:scroll": "node scripts/check-scroll-snap.mjs"
   },
   "dependencies": {
     "@libsql/client": "^0.17.4",
-    "@react-three/drei": "^10.7.8",
-    "@react-three/fiber": "^9.7.0",
     "drizzle-orm": "^0.45.2",
     "gray-matter": "^4.0.3",
     "next": "16.3.1",
@@ -34,6 +33,7 @@
     "drizzle-kit": "^0.31.10",
     "eslint": "^9",
     "eslint-config-next": "16.3.1",
+    "playwright": "^1.62.1",
     "tailwindcss": "^4",
     "typescript": "^5"
   },

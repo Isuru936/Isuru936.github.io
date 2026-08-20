@@ -9,21 +9,34 @@ import nextTs from "eslint-config-next/typescript";
  * src/db/. Later config objects override earlier ones for the same rule, so the
  * exemptions below re-declare the rule with only the *other* restriction rather
  * than switching it off.
+ *
+ * Package names go in `paths`, not `patterns`: `patterns.group` uses gitignore
+ * semantics, where a slash-less pattern like `three` matches ANY path segment —
+ * which wrongly flagged our own `@/three/...` alias imports.
  */
-const WEBGL_PATTERN = {
-  group: ["three", "three/*", "@react-three/*"],
-  message:
-    "WebGL imports are confined to src/three/. Import a component from there instead.",
+const WEBGL_MESSAGE =
+  "WebGL imports are confined to src/three/. Import a component from there instead.";
+const DRIZZLE_MESSAGE =
+  "Drizzle imports are confined to src/db/. Call a typed function from src/db/queries/ instead.";
+
+const WEBGL = {
+  paths: [{ name: "three", message: WEBGL_MESSAGE }],
+  patterns: [{ group: ["three/*", "@react-three/*"], message: WEBGL_MESSAGE }],
 };
 
-const DRIZZLE_PATTERN = {
-  group: ["drizzle-orm", "drizzle-orm/*"],
-  message:
-    "Drizzle imports are confined to src/db/. Call a typed function from src/db/queries/ instead.",
+const DRIZZLE = {
+  paths: [{ name: "drizzle-orm", message: DRIZZLE_MESSAGE }],
+  patterns: [{ group: ["drizzle-orm/*"], message: DRIZZLE_MESSAGE }],
 };
 
-const restrict = (...patterns) => ({
-  "no-restricted-imports": ["error", { patterns }],
+const restrict = (...specs) => ({
+  "no-restricted-imports": [
+    "error",
+    {
+      paths: specs.flatMap((s) => s.paths),
+      patterns: specs.flatMap((s) => s.patterns),
+    },
+  ],
 });
 
 const eslintConfig = defineConfig([
@@ -32,15 +45,15 @@ const eslintConfig = defineConfig([
 
   {
     files: ["src/**/*.{ts,tsx}"],
-    rules: restrict(WEBGL_PATTERN, DRIZZLE_PATTERN),
+    rules: restrict(WEBGL, DRIZZLE),
   },
   {
     files: ["src/three/**/*.{ts,tsx}"],
-    rules: restrict(DRIZZLE_PATTERN),
+    rules: restrict(DRIZZLE),
   },
   {
     files: ["src/db/**/*.{ts,tsx}"],
-    rules: restrict(WEBGL_PATTERN),
+    rules: restrict(WEBGL),
   },
 
   // Override default ignores of eslint-config-next.

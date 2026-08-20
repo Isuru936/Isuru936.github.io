@@ -1,10 +1,10 @@
 ## ADDED Requirements
 
 ### Requirement: WebGL code is confined to a single boundary
-The system SHALL restrict all imports of `three`, `@react-three/fiber`, and `@react-three/drei` to `src/three/`. No other directory MUST import them.
+The system SHALL restrict all imports of `three` to `src/three/`. No other directory MUST import it.
 
 #### Scenario: WebGL is imported outside the boundary
-- **WHEN** a module outside `src/three/` imports `three` or an R3F package
+- **WHEN** a module outside `src/three/` imports `three`
 - **THEN** the lint step fails with an error identifying the offending import
 
 #### Scenario: A text-only route is loaded
