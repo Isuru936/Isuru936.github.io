@@ -106,12 +106,175 @@ a:hover {
   color: #59d3cf;
 }
 
-/* Panels are scrolled internally when they overflow; the design hid the bar. */
+/*
+ * Layout, and the mobile view.
+ *
+ * These properties live in CSS rather than inline styles for one reason: the
+ * mobile view has to override them, and an inline style beats any rule that is
+ * not !important. The design achieves the same thing by mutating inline styles
+ * from JS on a 1.2s interval; a media query needs no interval, cannot thrash
+ * layout, and is already correct on the first paint instead of after hydration.
+ *
+ * Per-section values that used to be inline arrive as custom properties:
+ *   --panel-max  the panel's desktop max-width (34rem, 24rem, ...)
+ *   --panel-gap  its desktop row gap
+ *   --panel-pad  padding, slab panels only
+ */
+
+/* The sticky frame that centres one panel in the viewport. */
+.frame {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 36px 30px;
+  max-width: 1320px;
+  margin: 0 auto;
+}
+
+.frame--end {
+  justify-content: flex-end;
+  padding: 36px 34px;
+}
+
 .panel {
+  box-sizing: border-box;
+  max-width: var(--panel-max);
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: var(--panel-gap);
+  transition:
+    opacity 0.45s ease,
+    transform 0.45s ease;
+  /* Panels scroll internally when they overflow; the design hid the bar. */
   scrollbar-width: none;
 }
 .panel::-webkit-scrollbar {
   display: none;
+}
+
+/* Experience and Stack are bordered slabs on every viewport. */
+.panel--slab {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(9, 12, 16, 0.76);
+  backdrop-filter: blur(10px);
+  padding: var(--panel-pad);
+}
+
+.scrim {
+  background: linear-gradient(
+    90deg,
+    rgba(7, 9, 12, 0.7) 0%,
+    rgba(7, 9, 12, 0.18) 40%,
+    rgba(7, 9, 12, 0.08) 62%,
+    rgba(7, 9, 12, 0.62) 100%
+  );
+}
+
+.nav {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 16px 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.nav-brand {
+  font-size: 13px;
+}
+
+.nav-links {
+  display: flex;
+  gap: 24px;
+  font-size: 12px;
+}
+
+.desk-only {
+  display: block;
+}
+
+.mobile-only {
+  display: none;
+}
+
+/*
+ * Mobile. The breakpoint mirrors NARROW_PX in src/three/deskScene.ts, which
+ * widens the camera to 50deg and reframes the subject high — the panel docking
+ * to the bottom edge below depends on the scene having moved out of the way.
+ */
+@media (max-width: 759.98px) {
+  .frame,
+  .frame--end {
+    align-items: flex-end;
+    justify-content: center;
+    padding: 86px 14px 22px;
+  }
+
+  .panel {
+    max-width: 100%;
+    width: 100%;
+    max-height: 66vh;
+    gap: 13px;
+  }
+
+  /* Bare panels become cards so they stay readable over the scene. Slabs
+     already have a border, and the design deliberately left those alone. */
+  .panel:not(.panel--slab) {
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(9, 12, 16, 0.82);
+    backdrop-filter: blur(10px);
+    padding: 20px 18px;
+  }
+
+  /* Vertical scrim: on mobile the text sits below the scene, not beside it. */
+  .scrim {
+    background: linear-gradient(
+      180deg,
+      rgba(7, 9, 12, 0.62) 0%,
+      rgba(7, 9, 12, 0.06) 26%,
+      rgba(7, 9, 12, 0.5) 58%,
+      rgba(7, 9, 12, 0.86) 100%
+    );
+  }
+
+  .nav {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 9px;
+    padding: 11px 16px;
+  }
+
+  .nav-brand {
+    font-size: 11.5px;
+  }
+
+  .nav-links {
+    gap: 16px;
+    font-size: 10.5px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .nav-links::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* The monitor is unreadable at this size, so its content moves into the
+     Profile panel and the "look at the monitor" pointer is dropped. */
+  .desk-only {
+    display: none;
+  }
+
+  .mobile-only {
+    display: flex;
+  }
 }
 
 /* SectionSnap reads the same query and jumps instead of tweening. */
