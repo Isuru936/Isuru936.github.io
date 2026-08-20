@@ -4,8 +4,21 @@ import { useEffect } from 'react';
 
 const COUNT = 6;
 const DURATION = 900;
-/** Quiet period after a snap, so trackpad inertia cannot skip a section. */
-const COOLDOWN = 150;
+/**
+ * Silence that ends a gesture.
+ *
+ * A trackpad flick emits a long, decaying stream of `wheel` events. Two things
+ * make a fixed-duration lock unworkable: the stream can outlast any lock, and —
+ * because the WebGL render loop saturates the main thread — delivery is jittery,
+ * so individual gaps between events vary wildly (measured: 166ms median with
+ * outliers past 300ms). Comparing one gap against a threshold therefore splits a
+ * single flick into several "gestures".
+ *
+ * Instead the gesture stays open and is re-armed by a timer that EVERY event
+ * resets, so it ends only on sustained silence. The window is generous because
+ * jitter, not inertia, sets the floor here.
+ */
+const GESTURE_QUIET = 500;
 /** Minimum touch travel before a swipe counts as a gesture. */
 const SWIPE_PX = 40;
 
@@ -27,7 +40,9 @@ export function SectionSnap() {
 
     let index = 0;
     let animating = false;
-    let releaseAt = 0;
+    let gestureOpen = false;
+    let quietTimer: ReturnType<typeof setTimeout> | undefined;
+    let touchHandled = false;
     let raf = 0;
 
     const maxScroll = () =>
@@ -65,7 +80,6 @@ export function SectionSnap() {
 
       if (reduceMotion.matches) {
         window.scrollTo({ top: to, behavior: 'instant' });
-        releaseAt = performance.now() + COOLDOWN;
         return;
       }
 
@@ -81,13 +95,10 @@ export function SectionSnap() {
           raf = requestAnimationFrame(step);
         } else {
           animating = false;
-          releaseAt = performance.now() + COOLDOWN;
         }
       };
       raf = requestAnimationFrame(step);
     };
-
-    const busy = () => animating || performance.now() < releaseAt;
 
     /**
      * A panel that overflows its viewport height must scroll its own content
@@ -107,18 +118,35 @@ export function SectionSnap() {
       return false;
     };
 
+    /** Any wheel activity keeps the current gesture open. */
+    const keepGestureOpen = () => {
+      clearTimeout(quietTimer);
+      quietTimer = setTimeout(() => {
+        gestureOpen = false;
+      }, GESTURE_QUIET);
+    };
+
     const onWheel = (e: WheelEvent) => {
       const dir = Math.sign(e.deltaY);
       if (!dir) return;
+
+      // Held even when a panel consumes the event, so reaching a panel's edge
+      // mid-flick does not let the remainder of that flick fling the page.
+      keepGestureOpen();
+
       if (panelWantsGesture(e.target, dir)) return;
       e.preventDefault();
-      if (busy()) return;
+
+      if (gestureOpen) return;
+      gestureOpen = true;
       goTo(index + dir);
     };
 
     let touchY = 0;
     const onTouchStart = (e: TouchEvent) => {
       touchY = e.touches[0]?.clientY ?? 0;
+      // One section per finger-down, however far the finger travels.
+      touchHandled = false;
     };
 
     const onTouchMove = (e: TouchEvent) => {
@@ -128,7 +156,8 @@ export function SectionSnap() {
       if (!dir || Math.abs(travel) < SWIPE_PX) return;
       if (panelWantsGesture(e.target, dir)) return;
       e.preventDefault();
-      if (busy()) return;
+      if (touchHandled) return;
+      touchHandled = true;
       touchY = y;
       goTo(index + dir);
     };
@@ -154,15 +183,15 @@ export function SectionSnap() {
       }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
 
-      let next: number | null = null;
-      if (e.key === 'Home') next = 0;
-      else if (e.key === 'End') next = COUNT - 1;
-      else if (e.key in KEY_STEPS) next = index + KEY_STEPS[e.key];
+      const absolute = e.key === 'Home' ? 0 : e.key === 'End' ? COUNT - 1 : null;
+      const relative = e.key in KEY_STEPS ? KEY_STEPS[e.key] : null;
+      if (absolute === null && relative === null) return;
 
-      if (next === null) return;
       e.preventDefault();
-      if (busy()) return;
-      goTo(next);
+      // Auto-repeat from a held key would run the page end to end.
+      if (e.repeat || animating) return;
+
+      goTo(absolute !== null ? absolute : index + relative!);
     };
 
     /** Nav anchors must land on the same offsets, not the raw section top. */
@@ -190,6 +219,7 @@ export function SectionSnap() {
 
     return () => {
       cancelAnimationFrame(raf);
+      clearTimeout(quietTimer);
       window.removeEventListener('wheel', onWheel);
       window.removeEventListener('touchstart', onTouchStart);
       window.removeEventListener('touchmove', onTouchMove);
