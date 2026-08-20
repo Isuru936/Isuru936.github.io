@@ -4,6 +4,9 @@ import { type SceneFonts } from './fonts';
 import { createScreenPainter } from './screen';
 import { padTexture, paperTexture, phoneTexture } from './textures';
 
+/** Mobile breakpoint. Mirrored by the media query in globals.css. */
+export const NARROW_PX = 760;
+
 const TAU = Math.PI * 2;
 const smooth = (t: number) => t * t * (3 - 2 * t);
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
@@ -484,12 +487,23 @@ export function createDeskWorld(host: HTMLElement, opts: DeskWorldOptions): Desk
   };
   window.addEventListener('pointermove', onMove, { passive: true });
 
+  /**
+   * The desk does not fit a phone viewport at 38deg, so narrow screens widen
+   * the lens. `NARROW_PX` must stay in step with the CSS breakpoint in
+   * globals.css — the layout anchors the panel to the bottom on the assumption
+   * that the scene has been reframed high.
+   */
+  let narrow = false;
   const onResize = () => {
     const s = size();
     renderer.setSize(s.w, s.h);
     camera.aspect = s.w / s.h;
+    narrow = s.w < NARROW_PX;
+    camera.fov = narrow ? 50 : 38;
     camera.updateProjectionMatrix();
   };
+  // Run once so the first painted frame already has the right lens.
+  onResize();
   window.addEventListener('resize', onResize);
   const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(onResize) : null;
   ro?.observe(host);
@@ -534,7 +548,8 @@ export function createDeskWorld(host: HTMLElement, opts: DeskWorldOptions): Desk
 
     mx += (tmx - mx) * 0.045;
     my += (tmy - my) * 0.045;
-    const par = 0.35 * (1 - prog * 0.65);
+    // Damped on a phone: a small hand movement should not swing the scene.
+    const par = (narrow ? 0.1 : 0.35) * (1 - prog * 0.65);
     wantPos.x += mx * par;
     wantPos.y += -my * par * 0.55;
 
@@ -542,11 +557,15 @@ export function createDeskWorld(host: HTMLElement, opts: DeskWorldOptions): Desk
     camTgt.lerp(wantTgt, 0.085);
     camera.position.copy(camPos);
     camera.lookAt(camTgt);
-    frame(
-      camTgt,
-      stations[i].sx + (stations[i + 1].sx - stations[i].sx) * k,
-      stations[i].sy + (stations[i + 1].sy - stations[i].sy) * k,
-    );
+    let fx = stations[i].sx + (stations[i + 1].sx - stations[i].sx) * k;
+    let fy = stations[i].sy + (stations[i + 1].sy - stations[i].sy) * k;
+    if (narrow) {
+      // Ignore the per-station offsets and park the subject centred and high,
+      // clear of the panel that sits along the bottom edge on mobile.
+      fx = 0;
+      fy = 0.42;
+    }
+    frame(camTgt, fx, fy);
 
     arms.forEach((a, idx) => {
       const beat = (Math.sin(t * 9 + idx * 1.7) * 0.5 + Math.sin(t * 4.3 + idx) * 0.2) * mk;
