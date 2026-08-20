@@ -14,37 +14,17 @@ const ACCENT = '#59d3cf';
 
 const section: CSSProperties = { minHeight: '170vh', position: 'relative' };
 
-const sticky = (align: 'flex-start' | 'flex-end'): CSSProperties => ({
-  position: 'sticky',
-  top: 0,
-  height: '100vh',
-  boxSizing: 'border-box',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: align,
-  padding: align === 'flex-end' ? '36px 34px' : '36px 30px',
-  maxWidth: 1320,
-  margin: '0 auto',
-});
-
-const panel = (maxWidth: string, gap: number): CSSProperties => ({
-  maxWidth,
-  boxSizing: 'border-box',
-  maxHeight: '100%',
-  overflowY: 'auto',
-  overscrollBehavior: 'contain',
-  display: 'flex',
-  flexDirection: 'column',
-  gap,
-  transition: 'opacity 0.45s ease, transform 0.45s ease',
-});
-
-/** Bordered, blurred slab used by the experience and stack panels. */
-const slab: CSSProperties = {
-  border: '1px solid rgba(255,255,255,0.1)',
-  background: 'rgba(9,12,16,0.76)',
-  backdropFilter: 'blur(10px)',
-};
+/**
+ * Panel geometry lives in globals.css so the mobile media query can override it
+ * — an inline style would beat any rule that is not !important. Only the values
+ * that differ per section are passed in, as custom properties.
+ */
+const panelVars = (maxWidth: string, gap: number, pad?: string): CSSProperties =>
+  ({
+    '--panel-max': maxWidth,
+    '--panel-gap': `${gap}px`,
+    ...(pad ? { '--panel-pad': pad } : {}),
+  }) as CSSProperties;
 
 const eyebrow: CSSProperties = {
   fontFamily: MONO,
@@ -117,6 +97,13 @@ const NAV = [
   ['#s5', 'contact'],
 ] as const;
 
+/** Mirrors the stats row painted on the monitor in src/three/screen.ts. */
+const PROFILE_STATS: Array<[string, string]> = [
+  ['2 yrs', 'at ascentic'],
+  ['BSc', 'comp. science'],
+  ['LK', 'sri lanka'],
+];
+
 const FOCUS = [
   {
     title: '.NET web applications',
@@ -173,16 +160,11 @@ export default function Home() {
       <PanelFocus />
       <SectionSnap />
 
-      {/* Readability scrim over the scene — heavier at the edges than the middle. */}
+      {/* Readability scrim. Horizontal on desktop where the text sits beside
+          the scene; vertical on mobile where it sits below. See globals.css. */}
       <div
-        style={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: 1,
-          pointerEvents: 'none',
-          background:
-            'linear-gradient(90deg, rgba(7,9,12,0.7) 0%, rgba(7,9,12,0.18) 40%, rgba(7,9,12,0.08) 62%, rgba(7,9,12,0.62) 100%)',
-        }}
+        className="scrim"
+        style={{ position: 'fixed', inset: 0, zIndex: 1, pointerEvents: 'none' }}
       />
 
       <div style={{ position: 'relative', zIndex: 2 }}>
@@ -198,22 +180,12 @@ export default function Home() {
             borderBottom: '1px solid rgba(255,255,255,0.06)',
           }}
         >
-          <nav
-            style={{
-              maxWidth: 1320,
-              margin: '0 auto',
-              padding: '16px 30px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 24,
-            }}
-          >
+          <nav className="nav">
             <a
               href="#s0"
+              className="nav-brand"
               style={{
                 fontFamily: MONO,
-                fontSize: 13,
                 letterSpacing: '0.14em',
                 textTransform: 'uppercase',
                 color: '#e8ecef',
@@ -221,15 +193,7 @@ export default function Home() {
             >
               isuru bandara
             </a>
-            <div
-              style={{
-                display: 'flex',
-                gap: 24,
-                fontFamily: MONO,
-                fontSize: 12,
-                letterSpacing: '0.1em',
-              }}
-            >
+            <div className="nav-links" style={{ fontFamily: MONO, letterSpacing: '0.1em' }}>
               {NAV.map(([href, label]) => (
                 <a key={href} href={href} className="nav-link">
                   {label}
@@ -241,8 +205,8 @@ export default function Home() {
 
         {/* ---------------- 01 Intro ---------------- */}
         <section id="s0" style={section}>
-          <div style={sticky('flex-start')}>
-            <div data-panel="1" className="panel" style={panel('34rem', 24)}>
+          <div className="frame">
+            <div data-panel="1" className="panel" style={panelVars('34rem', 24)}>
               <div
                 style={{
                   display: 'flex',
@@ -328,11 +292,14 @@ export default function Home() {
 
         {/* ---------------- 02 Profile ---------------- */}
         <section id="s1" style={section}>
-          <div style={sticky('flex-end')}>
-            <div data-panel="1" className="panel" style={panel('24rem', 14)}>
+          <div className="frame frame--end">
+            <div data-panel="1" className="panel" style={panelVars('24rem', 14)}>
               <span style={eyebrow}>01 / on the screen</span>
               <h2 style={{ ...h2, lineHeight: 1.05 }}>Profile</h2>
+
+              {/* Desktop points at the monitor, where this text is legible. */}
               <p
+                className="desk-only"
                 style={{
                   margin: 0,
                   color: '#8a949c',
@@ -343,14 +310,78 @@ export default function Home() {
               >
                 Open in the editor on the monitor.
               </p>
+
+              {/* On a phone the monitor is a few pixels tall, so the same copy
+                  is spelled out here instead. Mirrors paintProfile() in
+                  src/three/screen.ts. */}
+              <div
+                className="mobile-only"
+                style={{ flexDirection: 'column', gap: 13 }}
+              >
+                <p
+                  style={{
+                    margin: 0,
+                    color: '#aeb7bd',
+                    lineHeight: 1.6,
+                    fontSize: 14.5,
+                    textWrap: 'pretty',
+                  }}
+                >
+                  I am a .NET developer with over a year of experience building web
+                  applications. On the frontend I work with React, Next.js and TypeScript,
+                  connecting them to scalable backends and PostgreSQL databases.
+                </p>
+                <p
+                  style={{
+                    margin: 0,
+                    color: '#8a949c',
+                    lineHeight: 1.6,
+                    fontSize: 14,
+                    textWrap: 'pretty',
+                  }}
+                >
+                  I also have hands-on experience with Azure App Service and Vercel for
+                  hosting and deployment. I care about solving problems and writing clean
+                  code.
+                </p>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(3,1fr)',
+                    gap: 12,
+                    paddingTop: 13,
+                    borderTop: '1px solid rgba(255,255,255,0.08)',
+                    fontFamily: MONO,
+                  }}
+                >
+                  {PROFILE_STATS.map(([big, small]) => (
+                    <div
+                      key={big}
+                      style={{ display: 'flex', flexDirection: 'column', gap: 4 }}
+                    >
+                      <span style={{ fontSize: 16, color: '#e8ecef' }}>{big}</span>
+                      <span
+                        style={{
+                          fontSize: 9.5,
+                          letterSpacing: '0.1em',
+                          textTransform: 'uppercase',
+                          color: '#6f787f',
+                        }}
+                      >
+                        {small}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         </section>
 
         {/* ---------------- 03 Focus ---------------- */}
         <section id="s2" style={section}>
-          <div style={sticky('flex-start')}>
-            <div data-panel="1" className="panel" style={panel('33rem', 14)}>
+          <div className="frame">
+            <div data-panel="1" className="panel" style={panelVars('33rem', 14)}>
               <span style={eyebrow}>02 / on the desk mat</span>
               <h2 style={h2}>What I work on</h2>
               {FOCUS.map((item) => (
@@ -386,11 +417,11 @@ export default function Home() {
 
         {/* ---------------- 04 Experience ---------------- */}
         <section id="s3" style={section}>
-          <div style={sticky('flex-end')}>
+          <div className="frame frame--end">
             <div
               data-panel="1"
-              className="panel"
-              style={{ ...panel('33rem', 4), ...slab, padding: '26px 28px' }}
+              className="panel panel--slab"
+              style={panelVars('33rem', 4, '26px 28px')}
             >
               <span style={eyebrow}>03 / papers on the desk</span>
               <h2
@@ -444,11 +475,11 @@ export default function Home() {
 
         {/* ---------------- 05 Stack ---------------- */}
         <section id="s4" style={section}>
-          <div style={sticky('flex-start')}>
+          <div className="frame">
             <div
               data-panel="1"
-              className="panel"
-              style={{ ...panel('31rem', 16), ...slab, padding: '22px 24px' }}
+              className="panel panel--slab"
+              style={panelVars('31rem', 16, '22px 24px')}
             >
               <span style={eyebrow}>04 / on the keyboard</span>
               <h2 style={h2}>Stack</h2>
@@ -505,8 +536,8 @@ export default function Home() {
 
         {/* ---------------- 06 Contact ---------------- */}
         <section id="s5" style={section}>
-          <div style={sticky('flex-end')}>
-            <div data-panel="1" className="panel" style={panel('30rem', 20)}>
+          <div className="frame frame--end">
+            <div data-panel="1" className="panel" style={panelVars('30rem', 20)}>
               <span style={eyebrow}>05 / phone on the desk</span>
               <h2
                 style={{
