@@ -118,6 +118,17 @@ export function SectionSnap() {
       return false;
     };
 
+    /**
+     * Relative move. The index is re-derived from the real scroll position
+     * first, so scrolling by any other means — dragging the scrollbar, browser
+     * find, focus scrolling, a programmatic jump — cannot leave us pointing at a
+     * stale section and then jumping somewhere non-adjacent.
+     */
+    const step = (dir: number) => {
+      if (!animating) index = nearestIndex();
+      goTo(index + dir);
+    };
+
     /** Any wheel activity keeps the current gesture open. */
     const keepGestureOpen = () => {
       clearTimeout(quietTimer);
@@ -139,7 +150,7 @@ export function SectionSnap() {
 
       if (gestureOpen) return;
       gestureOpen = true;
-      goTo(index + dir);
+      step(dir);
     };
 
     let touchY = 0;
@@ -159,7 +170,7 @@ export function SectionSnap() {
       if (touchHandled) return;
       touchHandled = true;
       touchY = y;
-      goTo(index + dir);
+      step(dir);
     };
 
     const KEY_STEPS: Record<string, number> = {
@@ -191,7 +202,8 @@ export function SectionSnap() {
       // Auto-repeat from a held key would run the page end to end.
       if (e.repeat || animating) return;
 
-      goTo(absolute !== null ? absolute : index + relative!);
+      if (absolute !== null) goTo(absolute);
+      else step(relative!);
     };
 
     /** Nav anchors must land on the same offsets, not the raw section top. */
