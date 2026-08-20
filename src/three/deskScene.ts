@@ -518,7 +518,12 @@ export function createDeskWorld(host: HTMLElement, opts: DeskWorldOptions): Desk
     const doc = document.documentElement;
     const max = Math.max(1, doc.scrollHeight - window.innerHeight);
     tProg = clamp((window.scrollY || doc.scrollTop || 0) / max, 0, 1);
-    prog += (tProg - prog) * 0.09;
+    // Tighter than the design's 0.09. Scroll position no longer drifts to a
+    // stop by itself — SectionSnap tweens it on a fixed ease and stops dead on
+    // a station — so this smoothing is now stacked on top of an already smooth
+    // input, and the camera lerp below adds a third pass. At 0.09 the camera
+    // was still creeping about a second after the page had stopped moving.
+    prog += (tProg - prog) * 0.14;
 
     const N = stations.length;
     const f = clamp(prog * N - 0.5, 0, N - 1);
