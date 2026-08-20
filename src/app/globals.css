@@ -8,9 +8,22 @@
  * Tailwind would silently narrow it by 60px and shift every section.
  */
 
+/* No `scroll-behavior: smooth` here. SectionSnap tweens the page itself, and a
+   second smoothing pass fights that tween. Every same-page anchor is a `#s0`-`#s5`
+   link, which SectionSnap intercepts, so nothing is left relying on it.
+
+   The document is ~10 viewports tall but only ever rests on six offsets, so the
+   scrollbar thumb is a tenth of the track and dragging it lands between
+   stations. Hiding it removes the misleading control; the nav, the arrow keys
+   and Home/End all still move between sections. */
 html {
-  scroll-behavior: smooth;
   background: #07090c;
+  overscroll-behavior: none;
+  scrollbar-width: none;
+}
+
+html::-webkit-scrollbar {
+  display: none;
 }
 
 body {
@@ -101,10 +114,8 @@ a:hover {
   display: none;
 }
 
+/* SectionSnap reads the same query and jumps instead of tweening. */
 @media (prefers-reduced-motion: reduce) {
-  html {
-    scroll-behavior: auto;
-  }
   .hint-arrow {
     animation: none;
     opacity: 1;
