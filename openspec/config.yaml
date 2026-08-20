@@ -8,7 +8,9 @@ context: |
   TECH STACK
   - Next.js 16 (App Router) + React 19 + TypeScript, `src/` dir, `@/*` import alias
   - Tailwind CSS v4 (PostCSS plugin, no tailwind.config.js by default)
-  - React Three Fiber (@react-three/fiber) + @react-three/drei wrapping three.js
+  - three.js r185, driven imperatively. NOT React Three Fiber — see design.md;
+    the imported design is imperative three.js and porting it verbatim is what
+    preserves pixel fidelity.
   - Turso (libSQL) accessed via Drizzle ORM and @libsql/client
   - MDX for project/case-study content, stored in-repo under content/
   - pnpm as the package manager
@@ -16,8 +18,9 @@ context: |
     integration performs deploys on push to main.
 
   ARCHITECTURAL RULES (treat as invariants)
-  - `src/three/` is the ONLY place allowed to import `three` or R3F packages.
-    Keeps WebGL out of every server bundle and out of non-3D routes.
+  - `src/three/` is the ONLY place allowed to import `three`. Keeps WebGL out of
+    every server bundle and out of non-3D routes. Enforced by no-restricted-imports
+    via `paths` (not `patterns`, whose gitignore semantics also match `@/three/`).
   - `src/db/queries/` is the ONLY place allowed to import drizzle. Everything
     else calls typed query functions.
   - Never mount <Canvas> in app/layout.tsx — it would load three.js on every
@@ -34,9 +37,10 @@ context: |
     secrets. Never committed. Env is validated with zod at boot.
 
   KNOWN OPEN ITEMS
-  - The Claude Design output has not been inspected yet, so it is unknown
-    whether the existing 3D scene is raw three.js or already R3F. `src/three/`
-    is scaffolded as a placeholder until that is resolved.
+  - RESOLVED: the design (Claude Design project 792c48b9) is imperative three.js
+    r155 loaded from a CDN. Ported to the npm package at r185. Two version
+    differences carried consequences: PCFSoftShadowMap no longer exists and now
+    falls back to PCFShadowMap, and THREE.Clock is deprecated.
   - The Turso database currently lives in aws-ap-south-1 (Mumbai) while Vercel
     functions default to iad1 (N. Virginia), which costs ~200ms per query.
     Moving the DB to aws-us-east-1 is a deliberate, deferred follow-up.
